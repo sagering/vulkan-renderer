@@ -200,7 +200,8 @@ call compile_shaders.bat</Command>
   <ItemGroup>
     <ClInclude Include="clock.h" />
     <ClInclude Include="graphics_pipeline.h" />
-    <ClInclude Include="renderer.h" />
+    <ClInclude Include="playground.h" />
+    <ClInclude Include="teapot.h" />
     <ClInclude Include="vk_base.h" />
     <ClInclude Include="vk_init.h" />
     <ClInclude Include="vk_utils.h" />
@@ -210,10 +211,13 @@ call compile_shaders.bat</Command>
     <ClCompile Include="clock.cpp" />
     <ClCompile Include="graphics_pipeline.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="renderer.cpp" />
+    <ClCompile Include="playground.cpp" />
     <ClCompile Include="teapot.cpp" />
     <ClCompile Include="vk_base.cpp" />
     <ClCompile Include="window.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="notes.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

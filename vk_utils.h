@@ -83,8 +83,8 @@ inline VkBuffer
 vkuCreateBuffer(VkDevice device,
                 VkDeviceSize size,
                 VkBufferUsageFlags usage,
-                VkSharingMode sharingMode,
-                std::initializer_list<uint32_t> queueFamilyIndices,
+                VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                std::initializer_list<uint32_t> queueFamilyIndices = {},
                 const VkAllocationCallbacks* pAllocator = nullptr)
 {
   auto info =

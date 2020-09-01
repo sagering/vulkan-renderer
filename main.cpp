@@ -3,60 +3,42 @@
 #include <GLFW\glfw3.h>
 // clang-format on
 
-#include <glm\gtx\transform.hpp>
+#include <glm\gtx\transform.hpp>  // lookAt, perspective
+#include <glm\gtx\quaternion.hpp> // quat
 
 #include "window.h"
-#include "renderer.h"
+#include "playground.h"
 #include "clock.h"
-#include "teapot.h"
-#include <algorithm> // min, max
 
-void
-transformPot(std::vector<float>& pot)
-{
-  float xMin = std::numeric_limits<float>::max();
-  float yMin = std::numeric_limits<float>::max();
-  float zMin = std::numeric_limits<float>::max();
-
-  float xMax = std::numeric_limits<float>::min();
-  float yMax = std::numeric_limits<float>::min();
-  float zMax = std::numeric_limits<float>::min();
-
-  for (int i = 0; i < pot.size(); i += 3) {
-    xMin = std::min(xMin, pot[i]);
-    yMin = std::min(yMin, pot[i + 1]);
-    zMin = std::min(zMin, pot[i + 2]);
-
-    xMax = std::max(xMax, pot[i]);
-    yMax = std::max(yMax, pot[i + 1]);
-    zMax = std::max(zMax, pot[i + 2]);
-  }
-
-  for (int i = 0; i < pot.size(); i += 3) {
-    pot[i] = 2 * (pot[i] - xMin) / (xMax - xMin) - 1;
-    pot[i + 1] = 2 * (pot[i + 1] - yMin) / (yMax - yMin) - 1;
-    pot[i + 1] = -pot[i + 1];
-    pot[i + 2] = 2 * (pot[i + 2] - zMin) / (zMax - zMin) - 1;
-  }
-}
+#include <iostream>
 
 int
 main()
 {
   {
-    Window window(1280, 920, "Teapot");
-    Renderer renderer(&window);
+    Window window(1280, 920, "Playground");
+    VulkanBase base(&window);
+    ExampleRenderGraph rg(&base);
+    rg.Setup();
+
     Clock clock = {};
 
-    transformPot(teapot);
+    float timePassed = 0;
+    uint32_t fps = 0;
 
     while (window.keyboardState.key[GLFW_KEY_ESCAPE] != 1) {
       window.Update();
-      renderer.Update();
       clock.Update();
 
-      renderer.pushVertices(teapot);
-      renderer.drawFrame();
+      rg.Render();
+      timePassed += clock.GetTick();
+      fps += 1;
+
+      if (timePassed > 1.f) {
+        std::cout << "FPS: " << fps << std::endl;
+        timePassed = 0.f;
+        fps = 0;
+      }
     }
   }
 

@@ -7,6 +7,70 @@
 
 #include <vector>
 
+struct DeviceProps
+{
+  VkSurfaceKHR surface = VK_NULL_HANDLE;
+  VkPhysicalDevice handle = VK_NULL_HANDLE;
+  VkPhysicalDeviceProperties props = {};
+  VkPhysicalDeviceFeatures features = {};
+  VkPhysicalDeviceMemoryProperties memProps = {};
+  std::vector<VkQueueFamilyProperties> queueFamilyProps = {};
+  std::vector<VkSurfaceFormatKHR> surfaceFormats = {};
+  std::vector<VkPresentModeKHR> presentModes = {};
+
+  DeviceProps() = default;
+  DeviceProps(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
+
+  uint32_t GetGrahicsQueueFamiliyIdx();
+  uint32_t GetPresentQueueFamiliyIdx();
+
+  // surface capabilities are not static, e.g. currentExtent might change
+  VkSurfaceCapabilitiesKHR GetSurfaceCapabilities();
+
+  bool HasGraphicsSupport();
+  bool HasPresentSupport();
+};
+
+struct PhysicalImage
+{
+  VkImage image = VK_NULL_HANDLE;
+  VkDeviceMemory memory = VK_NULL_HANDLE;
+  VkImageView view = VK_NULL_HANDLE;
+
+  VkPipelineStageFlags stageFlags;
+  VkAccessFlags accessFlags;
+  VkImageLayout layout;
+};
+
+struct Swapchain
+{
+  VkDevice device = VK_NULL_HANDLE;
+  VkSurfaceKHR surface = VK_NULL_HANDLE;
+  VkSurfaceFormatKHR format = {};
+  VkExtent2D extent = {};
+  VkPresentModeKHR presentMode = {};
+  uint32_t imageCount = {};
+  VkSurfaceTransformFlagBitsKHR transform = {};
+
+  VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+  std::vector<PhysicalImage> images = {};
+
+  Swapchain(VkDevice device, DeviceProps deviceProps, VkSurfaceKHR surface);
+
+  void CreatePhysicalSwapchain(VkImageUsageFlags usage);
+
+  Swapchain() = delete;
+  Swapchain(const Swapchain&) = delete;
+  Swapchain& operator=(const Swapchain& other) = delete;
+
+  ~Swapchain();
+
+  PhysicalImage* AcquireImage(VkSemaphore imageAvailable);
+  void Present(VkQueue queue, VkSemaphore renderFinished);
+
+  uint32_t nextImageIdx = -1;
+};
+
 struct VulkanBase
 {
   struct VulkanWindow
@@ -23,62 +87,22 @@ struct VulkanBase
 
   VkSurfaceKHR surface = VK_NULL_HANDLE;
 
-  struct PhysicalDeviceProps
-  {
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-    VkPhysicalDevice handle = VK_NULL_HANDLE;
-    VkPhysicalDeviceProperties props = {};
-    VkPhysicalDeviceFeatures features = {};
-    VkPhysicalDeviceMemoryProperties memProps = {};
-    std::vector<VkQueueFamilyProperties> queueFamilyProps = {};
-    std::vector<VkSurfaceFormatKHR> surfaceFormats = {};
-    std::vector<VkPresentModeKHR> presentModes = {};
-
-    PhysicalDeviceProps() = default;
-    PhysicalDeviceProps(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
-
-    uint32_t GetGrahicsQueueFamiliyIdx();
-    uint32_t GetPresentQueueFamiliyIdx();
-
-    // surface capabilities are not static, e.g. currentExtent might change
-    VkSurfaceCapabilitiesKHR GetSurfaceCapabilities();
-
-    bool HasGraphicsSupport();
-    bool HasPresentSupport();
-  };
-
   std::vector<const char*> deviceExtensions = {};
   VkDevice device = VK_NULL_HANDLE;
-  PhysicalDeviceProps physicalDeviceProps = {};
+  DeviceProps deviceProps = {};
   VkQueue queue = VK_NULL_HANDLE;
   VkCommandPool cmdPool = VK_NULL_HANDLE;
 
-  struct Swapchain
+  struct CommandBuffer
   {
-    VkDevice device = VK_NULL_HANDLE;
-    VkSwapchainKHR handle = VK_NULL_HANDLE;
-    VkSurfaceFormatKHR surfaceFormat = {};
-    VkPresentModeKHR presentMode = {};
-    VkExtent2D imageExtent = {};
-    uint32_t imageCount = {};
-    std::vector<VkImage> images = {};
-    std::vector<VkImageView> imageViews = {};
-
-    Swapchain(VkDevice device,
-              PhysicalDeviceProps physicalDeviceProps,
-              VkSurfaceKHR surface);
-
-    Swapchain() = delete;
-    Swapchain(const Swapchain&) = delete;
-    Swapchain& operator=(const Swapchain& other) = delete;
-
-    ~Swapchain();
+    VkCommandBuffer cmdBuffer;
+    VkFence fence;
   };
 
-  Swapchain* swapchain = nullptr;
-
+  const uint32_t MAX_NUMBER_CMD_BUFFERS = 5;
   std::vector<VkCommandBuffer> commandBuffers = {};
   std::vector<VkFence> fences = {};
+  uint32_t nextCmdBufferIdx = 0;
 
   VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
   VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
@@ -86,16 +110,12 @@ struct VulkanBase
   // --------------------------------------------------------------------------
   // --------------------------------------------------------------------------
 
+  CommandBuffer NextCmdBuffer();
+
   VulkanBase(VulkanWindow* window);
   ~VulkanBase();
-  void Update();
-  virtual void OnSwapchainReinitialized() = 0;
 
 private:
-  void ReinitSwapchain();
-
-  void CreateSwapchainIndependentResources();
-  void DestroySwapchainIndependentResources();
-  void CreateSwapchainDependentResources();
-  void DestroySwapchainDependentResources();
+  void CreateResources();
+  void DestroyResources();
 };

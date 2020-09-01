@@ -1,4 +1,5 @@
 #include "teapot.h"
+#include <glm\glm.hpp>
 
 std::vector<float> teapot = {
   1.368074f,  2.435437f, -0.227403f, 1.381968f,  2.4f,      -0.229712f,
@@ -9482,3 +9483,34 @@ std::vector<float> teapot = {
   1.4772f,    0.127575f, -0.245542f, 1.4772f,    0.127575f, -0.245542f,
   1.48068f,   0.15f,     -0.24612f,  1.5f,       0.15f,     0.0f
 };
+
+static void
+pushVec3(std::vector<float>& floats, glm::vec3 v)
+{
+  floats.push_back(v.x);
+  floats.push_back(v.y);
+  floats.push_back(v.z);
+}
+
+std::vector<float>
+GenerateTeapotWithNormals()
+{
+  std::vector<float> result;
+
+  for (int i = 0; i < teapot.size(); i += 9) {
+    const glm::vec3& a = *(glm::vec3*)&teapot[i + 0];
+    const glm::vec3& b = *(glm::vec3*)&teapot[i + 3];
+    const glm::vec3& c = *(glm::vec3*)&teapot[i + 6];
+
+    glm::vec3 n = glm::normalize(glm::cross(b - a, c - a));
+
+    pushVec3(result, a);
+    pushVec3(result, n);
+    pushVec3(result, b);
+    pushVec3(result, n);
+    pushVec3(result, c);
+    pushVec3(result, n);
+  }
+
+  return result;
+}
