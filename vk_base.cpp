@@ -156,10 +156,15 @@ Swapchain::CreatePhysicalSwapchain(VkImageUsageFlags usage)
   images.resize(imageCount);
   for (uint32_t i = 0; i < imageCount; ++i) {
     images[i].image = vkImages[i];
-	images[i].memory = VK_NULL_HANDLE;
-	images[i].stageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-	images[i].accessFlags = 0;
-	images[i].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    images[i].memory = VK_NULL_HANDLE;
+    images[i].stageFlags =
+      VK_PIPELINE_STAGE_HOST_BIT; // VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    images[i].accessFlags = 0;
+    images[i].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    auto eventCreateInfo = vkiEventCreateInfo();
+    vkCreateEvent(device, &eventCreateInfo, nullptr, &images[i].event);
+    vkSetEvent(device, images[i].event);
 
     auto imageViewCreateInfo =
       vkiImageViewCreateInfo(images[i].image,
@@ -171,8 +176,8 @@ Swapchain::CreatePhysicalSwapchain(VkImageUsageFlags usage)
                                VK_COMPONENT_SWIZZLE_IDENTITY },
                              { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 
-    ASSERT_VK_SUCCESS(
-      vkCreateImageView(device, &imageViewCreateInfo, nullptr, &images[i].view));
+    ASSERT_VK_SUCCESS(vkCreateImageView(
+      device, &imageViewCreateInfo, nullptr, &images[i].view));
   }
 }
 

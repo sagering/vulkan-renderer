@@ -97,6 +97,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>./include</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -122,6 +123,7 @@ call compile_shaders.bat</Command>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>./include</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -149,6 +151,7 @@ call compile_shaders.bat</Command>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>./include</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -178,6 +181,7 @@ call compile_shaders.bat</Command>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>./include</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -198,26 +202,21 @@ call compile_shaders.bat</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="clock.h" />
-    <ClInclude Include="graphics_pipeline.h" />
+    <ClInclude Include="new.h" />
+    <ClInclude Include="pipeline_state.h" />
     <ClInclude Include="playground.h" />
-    <ClInclude Include="teapot.h" />
+    <ClInclude Include="pipeline.h" />
     <ClInclude Include="vk_base.h" />
     <ClInclude Include="vk_init.h" />
     <ClInclude Include="vk_utils.h" />
     <ClInclude Include="window.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="clock.cpp" />
-    <ClCompile Include="graphics_pipeline.cpp" />
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="example.cpp" />
     <ClCompile Include="playground.cpp" />
-    <ClCompile Include="teapot.cpp" />
+    <ClCompile Include="pipeline.cpp" />
     <ClCompile Include="vk_base.cpp" />
     <ClCompile Include="window.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="notes.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -40,6 +40,8 @@ struct PhysicalImage
   VkPipelineStageFlags stageFlags;
   VkAccessFlags accessFlags;
   VkImageLayout layout;
+
+  VkEvent event = VK_NULL_HANDLE;
 };
 
 struct Swapchain

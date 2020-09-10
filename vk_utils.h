@@ -27,7 +27,8 @@
 inline VkPipeline
 vkuCreateGraphicsPipeline(
   VkDevice device,
-  std::initializer_list<VkPipelineShaderStageCreateInfo> stages,
+  VkPipelineShaderStageCreateInfo* pStages,
+  uint32_t stageCount,
   VkPipelineVertexInputStateCreateInfo vertexInputState,
   VkPipelineInputAssemblyStateCreateInfo inputAssemblyState,
   VkPipelineTessellationStateCreateInfo tessellationState,
@@ -44,8 +45,8 @@ vkuCreateGraphicsPipeline(
   int32_t basePipelineIndex)
 {
   auto graphicsPipelineCreateInfo =
-    vkiGraphicsPipelineCreateInfo(static_cast<uint32_t>(stages.size()),
-                                  stages.begin(),
+    vkiGraphicsPipelineCreateInfo(stageCount,
+                                  pStages,
                                   &vertexInputState,
                                   &inputAssemblyState,
                                   &tessellationState,
