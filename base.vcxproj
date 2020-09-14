@@ -202,10 +202,9 @@ call compile_shaders.bat</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="new.h" />
-    <ClInclude Include="pipeline_state.h" />
-    <ClInclude Include="playground.h" />
+    <ClInclude Include="rendergraph.h" />
     <ClInclude Include="pipeline.h" />
+    <ClInclude Include="pipeline_state.h" />
     <ClInclude Include="vk_base.h" />
     <ClInclude Include="vk_init.h" />
     <ClInclude Include="vk_utils.h" />
@@ -213,7 +212,6 @@ call compile_shaders.bat</Command>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="example.cpp" />
-    <ClCompile Include="playground.cpp" />
     <ClCompile Include="pipeline.cpp" />
     <ClCompile Include="vk_base.cpp" />
     <ClCompile Include="window.cpp" />

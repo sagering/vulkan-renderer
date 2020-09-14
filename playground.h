@@ -29,60 +29,16 @@ struct AttachmentOperation
   VkAttachmentStoreOp stencilStoreOp = {};
 };
 
-struct ExecutionContext;
 struct Operation
 {
   VkImageUsageFlags usage = {};
 
-  VkPipelineStageFlags stageFlags = {};
-  VkAccessFlags accessFlags = {};
-  VkImageLayout layout = {};
-
-  static Operation ColorOutputAttachment()
+  struct MemoryAccess
   {
-    Operation op;
-    op.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    op.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    op.stageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    op.accessFlags = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-    return op;
-  }
-
-  static Operation DepthStencilAttachment()
-  {
-    Operation op;
-    op.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    op.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    op.stageFlags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    op.accessFlags = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                     VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-    return op;
-  }
-
-  static Operation Sampled()
-  {
-    Operation op;
-    op.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-    op.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    op.stageFlags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    op.accessFlags = VK_ACCESS_SHADER_READ_BIT;
-
-    return op;
-  }
-
-  static Operation PresentSrc()
-  {
-    Operation op;
-    op.usage = 0;
-    op.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    op.stageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    op.accessFlags = 0;
-
-    return op;
-  }
+    VkPipelineStageFlags stageFlags = {};
+    VkAccessFlags accessFlags = {};
+    VkImageLayout layout = {};
+  } acc;
 
   bool HasAttachmentUsageFlags() const
   {
@@ -103,7 +59,49 @@ struct Operation
       VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT |
       VK_ACCESS_COMMAND_PROCESS_WRITE_BIT_NVX |
       VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV;
-    return (accessFlags & mask) > 0;
+    return (acc.accessFlags & mask) > 0;
+  }
+
+  static Operation ColorOutputAttachment()
+  {
+    Operation op;
+    op.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    op.acc = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+               VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+               VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+    return op;
+  }
+
+  static Operation DepthStencilAttachment()
+  {
+    Operation op;
+    op.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    op.acc = { VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                 VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+               VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+               VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+    return op;
+  }
+
+  static Operation Sampled()
+  {
+    Operation op;
+    op.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+    op.acc = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+               VK_ACCESS_SHADER_READ_BIT,
+               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+    return op;
+  }
+
+  static Operation PresentSrc()
+  {
+    Operation op;
+    op.usage = 0;
+    op.acc = { VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+               0,
+               VK_IMAGE_LAYOUT_PRESENT_SRC_KHR };
+    return op;
   }
 };
 
@@ -256,7 +254,7 @@ struct VirtualImage
     for (uint32_t i = 1; i < ops.size(); ++i) {
       auto& currRange = ranges.back();
       if (ops[i].HasWriteFlags() || currRange.op.HasWriteFlags() ||
-          ops[i].layout != currRange.op.layout) {
+          ops[i].acc.layout != currRange.op.acc.layout) {
         // end current range here
         currRange.end = i;
 
@@ -264,8 +262,8 @@ struct VirtualImage
         ranges.push_back({ ops[i], i, static_cast<uint32_t>(ops.size()) });
       } else {
         // add to current range
-        currRange.op.stageFlags |= ops[i].stageFlags;
-        currRange.op.accessFlags |= ops[i].accessFlags;
+        currRange.op.acc.stageFlags |= ops[i].acc.stageFlags;
+        currRange.op.acc.accessFlags |= ops[i].acc.accessFlags;
       }
     }
 
@@ -279,14 +277,14 @@ struct VirtualImage
         barrier.srcMask = physicalImage->accessFlags;
         barrier.oldLayout = physicalImage->layout;
       } else {
-        barrier.srcStage = ranges[i - 1].op.stageFlags;
-        barrier.srcMask = ranges[i - 1].op.accessFlags;
-        barrier.oldLayout = ranges[i - 1].op.layout;
+        barrier.srcStage = ranges[i - 1].op.acc.stageFlags;
+        barrier.srcMask = ranges[i - 1].op.acc.accessFlags;
+        barrier.oldLayout = ranges[i - 1].op.acc.layout;
       }
 
-      barrier.dstStage = ranges[i].op.stageFlags;
-      barrier.dstMask = ranges[i].op.accessFlags;
-      barrier.newLayout = ranges[i].op.layout;
+      barrier.dstStage = ranges[i].op.acc.stageFlags;
+      barrier.dstMask = ranges[i].op.acc.accessFlags;
+      barrier.newLayout = ranges[i].op.acc.layout;
 
       barriers.insert({ ranges[i].start, barrier });
 
@@ -508,11 +506,11 @@ struct RenderPass : RenderGraphWorkUnit
                                  attachmentOp.storeOp,
                                  attachmentOp.stencilLoadOp,
                                  attachmentOp.stencilStoreOp,
-                                 op.layout,
-                                 op.layout));
+                                 op.acc.layout,
+                                 op.acc.layout));
 
       VkAttachmentReference ref = {
-        static_cast<uint32_t>(attachmentDescriptions.size() - 1), op.layout
+        static_cast<uint32_t>(attachmentDescriptions.size() - 1), op.acc.layout
       };
 
       switch (op.usage) {

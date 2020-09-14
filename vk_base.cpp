@@ -164,7 +164,6 @@ Swapchain::CreatePhysicalSwapchain(VkImageUsageFlags usage)
 
     auto eventCreateInfo = vkiEventCreateInfo();
     vkCreateEvent(device, &eventCreateInfo, nullptr, &images[i].event);
-    vkSetEvent(device, images[i].event);
 
     auto imageViewCreateInfo =
       vkiImageViewCreateInfo(images[i].image,

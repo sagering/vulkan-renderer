@@ -1,33 +1,25 @@
-// clang-format off
-#include <vulkan\vulkan_core.h>
-#include <GLFW\glfw3.h>
-// clang-format on
 
-#include <glm\gtx\transform.hpp>  // lookAt, perspective
-#include <glm\gtx\quaternion.hpp> // quat
-
+#include "vk_base.h"
 #include "window.h"
-#include "playground.h"
-#include "pipeline_state.h"
+
+#include "rendergraph.h"
 #include "pipeline.h"
 
-struct RenderTexturePass : RenderPass
+uint32_t Operation::nextId = 0;
+
+struct TextureSubpass : Subpass
 {
-  RenderTexturePass(VkDevice device,
-                    DeviceProps deviceProps,
-                    RenderGraph* graph,
-                    const char* imgName,
-                    uint32_t specialization)
-    : RenderPass(graph)
+  TextureSubpass(VkDevice device,
+                 DeviceProps deviceProps,
+                 const char* imgName,
+                 uint32_t specialization)
+    : Subpass()
     , device(device)
     , deviceProps(deviceProps)
     , imgName(imgName)
     , specialization(specialization)
   {
-    auto img = graph->GetVirtualImage(imgName);
-    img->AddOperation(Operation::ColorOutputAttachment());
-    clearValues.insert({ imgName, { 0.f, 0.f, 0.f } });
-    images.push_back(imgName);
+    SetOperation(imgName, Operation::ColorOutputAttachment());
   }
 
   VkDevice device;
@@ -48,9 +40,9 @@ struct RenderTexturePass : RenderPass
   Buffer vbuffer = {};
   uint8_t* vbufferHostMemory;
 
-  void OnBuildDone(RenderGraph* graph) override
+  void OnBakeDone() override
   {
-    auto img = graph->GetVirtualImage(imgName);
+    auto img = graph->vis[imgName];
     auto w = img->extent.width;
     auto h = img->extent.height;
 
@@ -93,7 +85,8 @@ struct RenderTexturePass : RenderPass
     vertexInputState.attributeFlagsCount += 1;
     vertexInputState.Apply(&pipelineState);
 
-    pipeline = new Pipeline(device, pipelineState, renderPass, 0);
+    pipeline =
+      new Pipeline(device, pipelineState, renderPass->renderPass, subpass);
     pipeline->Compile();
 
     // vertex buffer
@@ -119,7 +112,7 @@ struct RenderTexturePass : RenderPass
     memcpy(vbufferHostMemory, verts.data(), verts.size() * sizeof(float));
   }
 
-  void OnRecordRenderPassCommands(VkCommandBuffer cmdBuffer) override
+  void RecordCmds(VkCommandBuffer cmdBuffer) override
   {
     VkDeviceSize vbufferOffset = 0;
     pipeline->Bind(cmdBuffer);
@@ -130,10 +123,11 @@ struct RenderTexturePass : RenderPass
   }
 };
 
-struct ComposePass : RenderPass
+struct ComposePass : Subpass
 {
+  VkDevice device = VK_NULL_HANDLE;
+  DeviceProps deviceProps = {};
   Pipeline* pipeline = nullptr;
-  DeviceProps deviceProps;
 
   struct Buffer
   {
@@ -143,31 +137,20 @@ struct ComposePass : RenderPass
 
   const int VERTEX_BUFFER_SIZE = 1024 * 1024 * 2;
   Buffer vbuffer = {};
-  uint8_t* vbufferHostMemory;
+  uint8_t* vbufferHostMemory = nullptr;
 
-  ComposePass(DeviceProps deviceProps, RenderGraph* graph)
-    : RenderPass(graph)
+  ComposePass(VkDevice device, DeviceProps deviceProps)
+    : device(device)
     , deviceProps(deviceProps)
   {
-    auto img1 = graph->GetVirtualImage("img1");
-    img1->AddOperation(Operation::Sampled());
-    clearValues.insert({ "img1", { 0.f, 0.f, 0.f } });
-    images.push_back("img1");
-
-    auto img2 = graph->GetVirtualImage("img2");
-    img2->AddOperation(Operation::Sampled());
-    clearValues.insert({ "img2", { 0.f, 0.f, 0.f } });
-    images.push_back("img2");
-
-    auto finalImg = graph->GetVirtualImage("finalImg");
-    finalImg->AddOperation(Operation::ColorOutputAttachment());
-    clearValues.insert({ "finalImg", { 0.f, 0.f, 0.f } });
-    images.push_back("finalImg");
+    SetOperation("img1", Operation::Sampled());
+    SetOperation("img2", Operation::Sampled());
+    SetOperation("finalImg", Operation::ColorOutputAttachment());
   }
 
-  void OnBuildDone(RenderGraph* graph) override
+  void OnBakeDone() override
   {
-    auto img = graph->GetVirtualImage("finalImg");
+    auto img = graph->vis["finalImg"];
     auto w = img->extent.width;
     auto h = img->extent.height;
 
@@ -201,21 +184,21 @@ struct ComposePass : RenderPass
     vertexInputState.attributeFlagsCount += 1;
     vertexInputState.Apply(&pipelineState);
 
-    pipeline = new Pipeline(graph->GetDevice(), pipelineState, renderPass, 0);
+    pipeline =
+      new Pipeline(device, pipelineState, renderPass->renderPass, subpass);
     pipeline->Compile();
 
     // vertex buffer
-    vbuffer.buf = vkuCreateBuffer(graph->GetDevice(),
-                                  VERTEX_BUFFER_SIZE,
-                                  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    vbuffer.buf = vkuCreateBuffer(
+      device, VERTEX_BUFFER_SIZE, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
-    vbuffer.mem = vkuAllocateBufferMemory(graph->GetDevice(),
+    vbuffer.mem = vkuAllocateBufferMemory(device,
                                           deviceProps.memProps,
                                           vbuffer.buf,
                                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                                           true);
 
-    vkMapMemory(graph->GetDevice(),
+    vkMapMemory(device,
                 vbuffer.mem,
                 0,
                 VERTEX_BUFFER_SIZE,
@@ -237,7 +220,7 @@ struct ComposePass : RenderPass
     auto poolSize =
       vkiDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2);
     auto poolCreateInfo = vkiDescriptorPoolCreateInfo(2, 1, &poolSize);
-    vkCreateDescriptorPool(graph->GetDevice(), &poolCreateInfo, nullptr, &pool);
+    vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &pool);
 
     for (uint32_t set = 0; set < 2; ++set) {
       auto samplerInfo =
@@ -257,12 +240,10 @@ struct ComposePass : RenderPass
                              VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
                              VK_FALSE);
 
-      vkCreateSampler(
-        graph->GetDevice(), &samplerInfo, nullptr, &samplers[set]);
+      vkCreateSampler(device, &samplerInfo, nullptr, &samplers[set]);
       auto layout = pipeline->GetDescriptorSetLayout(0);
       auto allocateInfo = vkiDescriptorSetAllocateInfo(pool, 1, &layout);
-      vkAllocateDescriptorSets(
-        graph->GetDevice(), &allocateInfo, &descriptorSets[set]);
+      vkAllocateDescriptorSets(device, &allocateInfo, &descriptorSets[set]);
     }
   }
 
@@ -274,8 +255,7 @@ struct ComposePass : RenderPass
       return;
     }
 
-    PhysicalImage* pImages[2] = { graph->GetPhysicalImage("img1"),
-                                  graph->GetPhysicalImage("img2") };
+    PhysicalImage* pImages[2] = { graph->pis["img1"], graph->pis["img2"] };
 
     for (uint32_t set = 0; set < 2; ++set) {
       auto imageInfo =
@@ -293,8 +273,7 @@ struct ComposePass : RenderPass
                               nullptr,
                               nullptr);
 
-      vkUpdateDescriptorSets(
-        graph->GetDevice(), 1, &descriptorWrite, 0, nullptr);
+      vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
     }
 
     updated = true;
@@ -305,7 +284,7 @@ struct ComposePass : RenderPass
   VkDescriptorSet descriptorSets[2] = {};
   VkSampler samplers[2] = {};
 
-  void OnRecordRenderPassCommands(VkCommandBuffer cmdBuffer)
+  void RecordCmds(VkCommandBuffer cmdBuffer) override
   {
     UpdateDescriptorSets();
 
@@ -323,115 +302,130 @@ struct ComposePass : RenderPass
     }
   }
 };
-struct PresentTransition : RenderGraphWorkUnit
-{
-  PresentTransition(RenderGraph* graph)
-    : RenderGraphWorkUnit(graph)
-  {
-    images.push_back("finalImg");
-    graph->GetVirtualImage("finalImg")->AddOperation(Operation::PresentSrc());
-  }
-};
 
-struct ExampleRenderGraph : RenderGraph
-{
-  ExampleRenderGraph(VulkanBase* base, Swapchain* swapchain)
-    : RenderGraph(base, swapchain)
-  {
-    swapchain = new Swapchain(base->device, base->deviceProps, base->surface);
-
-    // Color
-
-    VirtualImage* img1 = new VirtualImage;
-    img1->extent = { swapchain->extent.width, swapchain->extent.height, 1 };
-    img1->format = VK_FORMAT_R8G8B8A8_SRGB;
-    img1->samples = VK_SAMPLE_COUNT_1_BIT;
-    img1->layers = 1;
-    img1->levels = 1;
-    img1->subresourceRange = {
-      vkuGetImageAspectFlags(img1->format), 0, img1->levels, 0, img1->layers
-    };
-
-    AddVirtualImage("img1", img1);
-
-    VirtualImage* img2 = new VirtualImage;
-    img2->extent = { swapchain->extent.width, swapchain->extent.height, 1 };
-    img2->format = VK_FORMAT_R8G8B8A8_SRGB;
-    img2->samples = VK_SAMPLE_COUNT_1_BIT;
-    img2->layers = 1;
-    img2->levels = 1;
-    img2->subresourceRange = {
-      vkuGetImageAspectFlags(img2->format), 0, img2->levels, 0, img2->layers
-    };
-
-    AddVirtualImage("img2", img2);
-
-    VirtualImage* finalImg = new VirtualImage;
-    finalImg->extent = { swapchain->extent.width, swapchain->extent.height, 1 };
-    finalImg->format = swapchain->format.format;
-    finalImg->samples = VK_SAMPLE_COUNT_1_BIT;
-    finalImg->layers = 1;
-    finalImg->levels = 1;
-    finalImg->subresourceRange = { vkuGetImageAspectFlags(img2->format),
-                                   0,
-                                   finalImg->levels,
-                                   0,
-                                   finalImg->layers };
-
-    AddVirtualImage("finalImg", finalImg);
-
-    // Work
-
-    AddWork(
-      "pass1",
-      new RenderTexturePass(base->device, base->deviceProps, this, "img1", 0));
-    AddWork(
-      "pass2",
-      new RenderTexturePass(base->device, base->deviceProps, this, "img2", 1));
-
-    AddWork("compose", new ComposePass(base->deviceProps, this));
-
-    AddWork("presentTransition", new PresentTransition(this));
-  }
-
-  void OnSetupPhysicalImages() override
-  {
-    physicalImages["img1"] = GetVirtualImage("img1")->CreatePhysicalImage(
-      base->device, base->deviceProps.memProps);
-    physicalImages["img2"] = GetVirtualImage("img2")->CreatePhysicalImage(
-      base->device, base->deviceProps.memProps);
-
-    swapchain->CreatePhysicalSwapchain(GetVirtualImage("finalImg")->usage);
-  }
-
-  void OnFrameResolvePhysicalImages() override
-  {
-    physicalImages["finalImg"] =
-      swapchain->AcquireImage(base->imageAvailableSemaphore);
-  }
-
-  void OnFrame() override
-  {
-    swapchain->Present(base->queue, base->renderFinishedSemaphore);
-  }
-};
-
-int
+void
 main()
 {
-  {
-    Window window(1280, 920, "Playground");
-    VulkanBase base(&window);
-    Swapchain swapchain(base.device, base.deviceProps, base.surface);
-    ExampleRenderGraph rg(&base, &swapchain);
+  Window window(1280, 920, "Playground");
+  VulkanBase base(&window);
+  Swapchain swapchain(base.device, base.deviceProps, base.surface);
 
-    rg.Setup();
+  RenderGraph* graph = new RenderGraph;
 
-    while (window.keyboardState.key[GLFW_KEY_ESCAPE] != 1) {
-      window.Update();
-      rg.RenderFrame();
-    }
+  VirtualImage* img1 = new VirtualImage;
+  img1->extent = { swapchain.extent.width, swapchain.extent.height, 1 };
+  img1->format = VK_FORMAT_R8G8B8A8_SRGB;
+  img1->samples = VK_SAMPLE_COUNT_1_BIT;
+  img1->layers = 1;
+  img1->levels = 1;
+  img1->subresourceRange = {
+    vkuGetImageAspectFlags(img1->format), 0, img1->levels, 0, img1->layers
+  };
+
+  graph->AddVirtualImage("img1", img1);
+
+  VirtualImage* img2 = new VirtualImage;
+  img2->extent = { swapchain.extent.width, swapchain.extent.height, 1 };
+  img2->format = VK_FORMAT_R8G8B8A8_SRGB;
+  img2->samples = VK_SAMPLE_COUNT_1_BIT;
+  img2->layers = 1;
+  img2->levels = 1;
+  img2->subresourceRange = {
+    vkuGetImageAspectFlags(img2->format), 0, img2->levels, 0, img2->layers
+  };
+
+  graph->AddVirtualImage("img2", img2);
+
+  VirtualImage* finalImg = new VirtualImage;
+  finalImg->extent = { swapchain.extent.width, swapchain.extent.height, 1 };
+  finalImg->format = swapchain.format.format;
+  finalImg->samples = VK_SAMPLE_COUNT_1_BIT;
+  finalImg->layers = 1;
+  finalImg->levels = 1;
+  finalImg->subresourceRange = { vkuGetImageAspectFlags(img2->format),
+                                 0,
+                                 finalImg->levels,
+                                 0,
+                                 finalImg->layers };
+
+  graph->AddVirtualImage("finalImg", finalImg);
+
+  RenderPass* renderPass0 = new RenderPass;
+
+  renderPass0->AddSubpass(
+    new TextureSubpass(base.device, base.deviceProps, "img1", 0));
+  renderPass0->AddSubpass(
+    new TextureSubpass(base.device, base.deviceProps, "img2", 1));
+
+  RenderPass* renderPass1 = new RenderPass;
+  renderPass1->AddSubpass(new ComposePass(base.device, base.deviceProps));
+
+  graph->AddRenderPass(renderPass0);
+  graph->AddRenderPass(renderPass1);
+
+  graph->Bake(base.device);
+
+  graph->pis["img1"] = graph->vis["img1"]->CreatePhysicalImage(
+    base.device, base.deviceProps.memProps);
+  graph->pis["img2"] = graph->vis["img2"]->CreatePhysicalImage(
+    base.device, base.deviceProps.memProps);
+
+  swapchain.CreatePhysicalSwapchain(graph->vis["finalImg"]->usage);
+
+  while (true) {
+    VkDevice device = base.device;
+    auto cmdBuffer = base.NextCmdBuffer();
+    VkQueue queue = base.queue;
+    VkSemaphore imageAvailableSemaphore = base.imageAvailableSemaphore;
+    VkSemaphore renderFinishedSemaphore = base.renderFinishedSemaphore;
+
+    graph->pis["finalImg"] =
+      swapchain.AcquireImage(base.imageAvailableSemaphore);
+
+    VkCommandBufferBeginInfo beginInfo = vkiCommandBufferBeginInfo(nullptr);
+    ASSERT_VK_SUCCESS(vkBeginCommandBuffer(cmdBuffer.cmdBuffer, &beginInfo));
+
+    graph->RecordCmds(device, cmdBuffer.cmdBuffer);
+
+    auto barrier =
+      vkiImageMemoryBarrier(0,
+                            0,
+                            graph->imageRanges["finalImg"].back().op.layout,
+                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                            VK_QUEUE_FAMILY_IGNORED,
+                            -1,
+                            graph->pis["finalImg"]->image,
+                            graph->vis["finalImg"]->subresourceRange);
+
+    vkCmdPipelineBarrier(cmdBuffer.cmdBuffer,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                         VK_DEPENDENCY_BY_REGION_BIT,
+                         0,
+                         nullptr,
+                         0,
+                         nullptr,
+                         1,
+                         &barrier);
+
+    ASSERT_VK_SUCCESS(vkEndCommandBuffer(cmdBuffer.cmdBuffer));
+
+    VkPipelineStageFlags waitStage =
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+    VkSubmitInfo submitInfo = vkiSubmitInfo(1,
+                                            &imageAvailableSemaphore,
+                                            &waitStage,
+                                            1,
+                                            &cmdBuffer.cmdBuffer,
+                                            1,
+                                            &renderFinishedSemaphore);
+
+    graph->pis["finalImg"]->layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    graph->pis["finalImg"]->stageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    graph->pis["finalImg"]->accessFlags = 0;
+
+    ASSERT_VK_SUCCESS(vkQueueSubmit(queue, 1, &submitInfo, cmdBuffer.fence));
+    swapchain.Present(base.queue, base.renderFinishedSemaphore);
   }
-
-  return 0;
 }
